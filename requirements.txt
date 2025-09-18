@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+sentence-transformers
+faiss-cpu
+transformers
+torch
+datasets
+soundfile
+langchain
+python-multipart
+git+https://github.com/openai/whisper.git
