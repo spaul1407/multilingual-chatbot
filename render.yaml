@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: multilingual-chatbot
+    env: docker
+    repo: https://github.com/spaul1407/multilingual-chatbot
+    branch: main
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /
+    envVars:
+      - key: HF_HOME
+        value: /cache/huggingface
+      - key: TRANSFORMERS_CACHE
+        value: /cache/huggingface
+      - key: HF_DATASETS_CACHE
+        value: /cache/huggingface
