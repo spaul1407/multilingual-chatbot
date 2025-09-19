@@ -2,6 +2,14 @@
 # Run:
 #   pip install fastapi uvicorn[standard] sentence-transformers faiss-cpu transformers torch soundfile librosa pydantic
 #   uvicorn chatbot_api:app --reload --host 0.0.0.0 --port 8000 --workers 1
+HF_CACHE_DIR = "/data/hf_cache"
+
+os.environ["HF_HOME"] = "/data/hf_cache"
+os.environ["TRANSFORMERS_CACHE"] = "/data/hf_cache"
+os.environ["SENTENCE_TRANSFORMERS_HOME"] = "/data/hf_cache"
+
+os.makedirs("/data/hf_cache", exist_ok=True)
+
 
 import os
 import io
@@ -28,19 +36,12 @@ from fastapi import Request
 import os
 
 # Set cache directory to a local folder inside your repo
-HF_CACHE_DIR = "/tmp/hf_cache"
-
-os.environ["HF_HOME"] = "/tmp/hf_cache"
-os.environ["TRANSFORMERS_CACHE"] = "/tmp/hf_cache"
-os.environ["SENTENCE_TRANSFORMERS_HOME"] = "/tmp/hf_cache"
-
-os.makedirs("/tmp/hf_cache", exist_ok=True)
 
 # ------------------------
 # CONFIG
 # ------------------------
 EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-ASR_MODEL = "openai/whisper-small"
+# ASR_MODEL = "openai/whisper-small"  # COMMENTED OUT
 DEFAULT_CASUAL_LLM = "google/flan-t5-base"
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 100
@@ -65,7 +66,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 index_lock = Lock()
 embedder: Optional[SentenceTransformer] = None
-asr_pipeline = None
+# asr_pipeline = None  # COMMENTED OUT
 llm_pipe = None
 llm_tokenizer = None
 llm_is_causal = False
@@ -104,7 +105,7 @@ def load_index_from_disk():
 # Model init
 # ------------------------
 def init_models():
-    global embedder, asr_pipeline, llm_pipe, llm_tokenizer, llm_is_causal
+    global embedder, llm_pipe, llm_tokenizer, llm_is_causal  # REMOVED asr_pipeline
 
     # ------------------------
     # Embeddings
@@ -116,16 +117,16 @@ def init_models():
     # ------------------------
     # ASR (Whisper)
     # ------------------------
-    if asr_pipeline is None:
-        print("Loading Whisper ASR pipeline...")
-        asr_pipeline = pipeline(
-            task="automatic-speech-recognition",
-            model=ASR_MODEL,
-            chunk_length_s=30,
-            device=0,  # GPU if available in HF Spaces
-            generate_kwargs={"language": "en", "task": "translate"},
-            cache_dir=HF_CACHE_DIR# Always translate to English
-        )
+    # if asr_pipeline is None:
+    #     print("Loading Whisper ASR pipeline...")
+    #     asr_pipeline = pipeline(
+    #         task="automatic-speech-recognition",
+    #         model=ASR_MODEL,
+    #         chunk_length_s=30,
+    #         device=0,  # GPU if available in HF Spaces
+    #         generate_kwargs={"language": "en", "task": "translate"},
+    #         cache_dir=HF_CACHE_DIR# Always translate to English
+    #     )
 
     # ------------------------
     # LLM (text2text RAG)
@@ -287,8 +288,8 @@ async def call_llm_async(prompt: str) -> str:
 # ------------------------
 # Chat endpoint with Whisper ASR
 # ------------------------
-from fastapi import FastAPI, UploadFile, Form
-from typing import Optional
+# from fastapi import FastAPI, UploadFile, Form
+# from typing import Optional
 
 # ------------------------
 # Chat endpoint (text or audio) optimized for Flan-T5
@@ -297,40 +298,40 @@ from typing import Optional
 async def chat_endpoint(
     user_id: str = Form(...),
     user_input: Optional[str] = Form(None),
-    audio_file: Optional[UploadFile] = None,
+    # audio_file: Optional[UploadFile] = None,  # COMMENTED OUT
     top_k: int = Form(TOP_K),
     retrieval_threshold: float = Form(RETRIEVAL_THRESHOLD),
     target_language: Optional[str] = Form(None)  # NEW
 ):
     """
-    Chat endpoint: accepts text or audio input.
+    Chat endpoint: accepts text input only.
     Returns: JSON with transcript (if audio), matched_ids, scores, used_retrieval, response.
     """
     init_models()
 
     # --- Determine final input (text) ---
     transcript = None
-    if audio_file is not None:
-        # save temp file for ASR
-        tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-        try:
-            content = await audio_file.read()
-            tfile.write(content)
-            tfile.flush()
-            tfile.close()
-            loop = asyncio.get_running_loop()
-            asr_result = await loop.run_in_executor(None, lambda: asr_pipeline(tfile.name))
-            transcript = asr_result.get("text", "").strip() if isinstance(asr_result, dict) else str(asr_result).strip()
-            final_input = transcript
-        finally:
-            try:
-                os.unlink(tfile.name)
-            except Exception:
-                pass
-    elif user_input:
+    # if audio_file is not None:
+    #     # save temp file for ASR
+    #     tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+    #     try:
+    #         content = await audio_file.read()
+    #         tfile.write(content)
+    #         tfile.flush()
+    #         tfile.close()
+    #         loop = asyncio.get_running_loop()
+    #         asr_result = await loop.run_in_executor(None, lambda: asr_pipeline(tfile.name))
+    #         transcript = asr_result.get("text", "").strip() if isinstance(asr_result, dict) else str(asr_result).strip()
+    #         final_input = transcript
+    #     finally:
+    #         try:
+    #             os.unlink(tfile.name)
+    #         except Exception:
+    #             pass
+    if user_input:
         final_input = user_input.strip()
     else:
-        return {"error": "Provide either user_input or audio_file."}
+        return {"error": "Provide user_input."}
 
     if not final_input:
         return {"error": "Empty input after transcription."}
